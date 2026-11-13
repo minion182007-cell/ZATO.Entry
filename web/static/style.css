@@ -55,7 +55,7 @@ button[type="submit"], .ghost {
   font: inherit; font-weight: 600; padding: 9px 14px; border-radius: 8px; cursor: pointer;
   border: 1px solid var(--accent); background: var(--accent); color: #fff;
 }
-.ghost { background: none; color: var(--accent); }
+button.ghost, button[type="submit"].ghost { background: none; color: var(--accent); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; }
 .result { display: grid; gap: 16px; min-width: 0; }
 .hero { padding: 22px 24px; }
@@ -87,10 +87,33 @@ body.assumptions tr.assumption { background: #fdf6e7; }
 .status.ok { color: var(--ok); }
 .status.bad { color: var(--critical); }
 .issue { padding: 8px 0; border-top: 1px solid var(--line); }
-.issue.error b { color: var(--critical); }
-.issue.warning b { color: var(--assume); }
 .st-planned { color: var(--muted); }
 .st-due { color: var(--assume); font-weight: 600; }
 .st-overdue, .st-expired { color: var(--critical); font-weight: 600; }
 .foot { max-width: 1240px; margin: 0 auto; padding: 8px 24px 32px; color: var(--muted); font-size: 12.5px; }
 .err { color: var(--critical); }
+
+/* Кабинет, формы пакета, сохранение плана */
+.layout.two { grid-template-columns: 1fr 1fr; max-width: 820px; }
+@media (max-width: 860px) { .layout.two { grid-template-columns: 1fr; } }
+.stack { display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+input[type="text"], input[type="password"] {
+  font: inherit; color: var(--ink); padding: 7px 9px; width: 100%;
+  border: 1px solid var(--line); border-radius: 7px; background: #fff;
+}
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px 14px; margin: 12px 0; }
+.docs { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-bottom: 4px; }
+.person-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.field.bad input { border-color: var(--critical); background: #fdf1ee; }
+.check.bad { color: var(--critical); }
+.link { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-decoration: underline; }
+.link.danger { color: var(--critical); }
+a { color: var(--accent); }
+.copy { display: flex; gap: 6px; margin-top: 6px; }
+.copy input { font: 12.5px/1.4 ui-monospace, Consolas, monospace; min-width: 0; }
+.small { padding: 6px 10px; font-weight: 500; white-space: nowrap; }
+.notice { background: #eef4fb; border: 1px solid #c9dcf1; border-radius: var(--radius); padding: 12px 14px; }
+.issue.error { color: var(--critical); }
+.issue.warning { color: var(--assume); }
+.inline { display: inline; }
+#check-summary .issue:first-of-type { margin-top: 8px; }

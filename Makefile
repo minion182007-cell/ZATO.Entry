@@ -1,4 +1,4 @@
-.PHONY: run test lint build docker
+.PHONY: run test lint build docker up
 
 run:
 	go run ./cmd/zato-entry
@@ -15,3 +15,7 @@ build:
 
 docker:
 	docker build -t zato-entry .
+
+# Запуск вместе с PostgreSQL (нужен файл .env, см. .env.example).
+up:
+	docker compose up --build

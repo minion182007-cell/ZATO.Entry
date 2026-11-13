@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ЗАТО.Вход — единое окно въезда</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,7 +13,7 @@
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="plan" aria-selected="true">Дорожная карта</button>
     <button role="tab" data-tab="check" aria-selected="false">Предпроверка пакета</button>
-    <button role="tab" data-tab="renew" aria-selected="false">Продления</button>
+    <button role="tab" data-tab="cabinet" aria-selected="false">Кабинет и продления</button>
   </nav>
 </header>
 
@@ -28,9 +29,12 @@
         <fieldset id="questions"><legend>Анкета</legend></fieldset>
         <fieldset id="sliders"><legend>Сроки задаёт эксперт</legend></fieldset>
         <label class="check"><input type="checkbox" id="show-assumptions"> Подсветить допущения</label>
+        <button type="submit">Сохранить план</button>
+        <div id="plan-saved" aria-live="polite"></div>
       </form>
 
       <div class="result">
+        <div class="notice" id="plan-notice" hidden></div>
         <div class="hero" id="hero" aria-live="polite"></div>
         <div class="first" id="first-action"></div>
         <div class="steps" id="steps"></div>
@@ -41,31 +45,23 @@
 
   <section id="tab-check" hidden>
     <div class="layout">
-      <form id="check-form" class="panel">
+      <form id="check-form" class="panel" autocomplete="off">
         <label class="field">Вид пропуска <select id="pass-type"></select></label>
         <label class="field">Желаемая дата въезда <input type="date" id="entry-date"></label>
-        <label class="field">Пакет (JSON, список людей)
-          <textarea id="persons" rows="18" spellcheck="false"></textarea>
-        </label>
-        <p class="muted">Пример заполнен сгенерированными данными. Пакет проверяется и не сохраняется.</p>
-        <button type="submit">Проверить пакет</button>
+        <p class="muted">Пакет проверяется и нигде не сохраняется. Пример заполняется сгенерированными данными.</p>
+        <div class="row">
+          <button type="submit">Проверить пакет</button>
+          <button type="button" class="ghost" id="add-person">Добавить человека</button>
+          <button type="button" class="ghost" id="sample-persons">Пример</button>
+        </div>
+        <div id="check-summary" aria-live="polite"></div>
       </form>
-      <div class="result" id="check-result" aria-live="polite"></div>
+      <div class="result" id="persons"></div>
     </div>
   </section>
 
-  <section id="tab-renew" hidden>
-    <div class="layout">
-      <form id="renew-form" class="panel">
-        <p class="muted">Сотрудник и дата окончания пропуска — по строке: <code>код; ГГГГ-ММ-ДД</code></p>
-        <textarea id="staff" rows="12" spellcheck="false"></textarea>
-        <div class="row">
-          <button type="submit">Построить календарь</button>
-          <button type="button" id="ics" class="ghost">Скачать .ics</button>
-        </div>
-      </form>
-      <div class="result" id="renew-result" aria-live="polite"></div>
-    </div>
+  <section id="tab-cabinet" hidden>
+    <div id="cabinet"></div>
   </section>
 </main>
 

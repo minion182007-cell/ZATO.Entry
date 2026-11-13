@@ -8,6 +8,20 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: zato
+          POSTGRES_PASSWORD: zato
+          POSTGRES_DB: zato_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U zato" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+    env:
+      ZATO_TEST_DATABASE_URL: postgres://zato:zato@localhost:5432/zato_test?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

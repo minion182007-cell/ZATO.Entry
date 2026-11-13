@@ -142,7 +142,7 @@ func rank(status string) int {
 
 func label(e Employee) string {
 	if e.Name != "" {
-		return e.Name
+		return e.ID + " (" + e.Name + ")"
 	}
 	return e.ID
 }

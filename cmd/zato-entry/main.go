@@ -26,6 +26,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// DATABASE_URL задаёт PostgreSQL; без него данные живут в памяти.
+	var st store.Store
+	if url := os.Getenv("DATABASE_URL"); url != "" {
+		pg, err := store.OpenPostgres(ctx, url)
+		if err != nil {
+			log.Error("база данных", "err", err)
+			os.Exit(1)
+		}
+		st = pg
+		log.Info("хранилище: PostgreSQL")
+	} else {
+		st = store.NewMemory()
+		log.Warn("DATABASE_URL не задан: данные хранятся в памяти и пропадут при перезапуске")
+	}
+	defer st.Close()
+
 	addr := os.Getenv("ZATO_ADDR")
 	if addr == "" {
 		addr = ":8080"
@@ -34,7 +53,7 @@ func main() {
 		Addr: addr,
 		Handler: (&api.Server{
 			Profiles: reg,
-			Plans:    store.NewMemory(10000),
+			Store:    st,
 			Static:   web.Files(),
 			Now:      time.Now,
 			Log:      log,
@@ -45,8 +64,24 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	// Планы без владельца живут 30 дней.
+	go func() {
+		tick := time.NewTicker(6 * time.Hour)
+		defer tick.Stop()
+		for {
+			if n, err := st.PurgeAnonymousPlans(ctx, time.Now().AddDate(0, 0, -30)); err != nil {
+				log.Error("очистка планов", "err", err)
+			} else if n > 0 {
+				log.Info("удалены устаревшие планы", "count", n)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+			}
+		}
+	}()
+
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)

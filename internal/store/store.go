@@ -1,57 +1,104 @@
-// Package store хранит построенные планы. Интерфейс позволяет заменить
-// хранилище в памяти на PostgreSQL без изменения API.
+// Package store — хранилище сервиса: планы, организации и их штат.
+// Две реализации за одним интерфейсом: PostgreSQL для работы и память
+// для разработки и тестов.
+//
+// Пакеты заявок с паспортными данными в хранилище не попадают: о
+// сотруднике хранится только код, необязательное имя и срок пропуска.
 package store
 
 import (
+	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
-	"sync"
+	"errors"
+	"time"
 
+	"github.com/minion182007-cell/ZATO.Entry/internal/passes"
 	"github.com/minion182007-cell/ZATO.Entry/internal/planner"
 )
 
-// Plans — хранилище планов.
-type Plans interface {
-	Save(p *planner.Plan) (string, error)
-	Get(id string) (*planner.Plan, bool)
+// Ошибки хранилища.
+var (
+	ErrNotFound = errors.New("не найдено")
+	ErrLimit    = errors.New("превышен лимит записей")
+)
+
+// MaxStaff — предел числа сотрудников в одной организации.
+const MaxStaff = 5000
+
+// Org — организация (кабинет): владелец штата и сохранённых планов.
+type Org struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	City string `json:"city"`
+	// FeedToken — ключ только для чтения календаря продлений (.ics).
+	FeedToken string    `json:"feed_token"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
-// Memory — хранилище в памяти процесса с ограничением по числу планов.
-type Memory struct {
-	mu    sync.RWMutex
-	plans map[string]*planner.Plan
-	order []string
-	limit int
+// PlanSummary — строка списка сохранённых планов.
+type PlanSummary struct {
+	ID         string    `json:"id"`
+	Scenario   string    `json:"scenario"`
+	Title      string    `json:"title"`
+	StartDate  string    `json:"start_date"`
+	TargetDate string    `json:"target_date"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
-// NewMemory создаёт хранилище; при превышении limit вытесняются старые планы.
-func NewMemory(limit int) *Memory {
-	return &Memory{plans: map[string]*planner.Plan{}, limit: limit}
+// Store — хранилище сервиса.
+type Store interface {
+	// SavePlan сохраняет план и присваивает ему идентификатор.
+	// orgID пуст для плана без владельца (доступен по ссылке).
+	SavePlan(ctx context.Context, p *planner.Plan, orgID string) error
+	GetPlan(ctx context.Context, id string) (*planner.Plan, error)
+	ListPlans(ctx context.Context, orgID string) ([]PlanSummary, error)
+	// PurgeAnonymousPlans удаляет планы без владельца старше before.
+	PurgeAnonymousPlans(ctx context.Context, before time.Time) (int64, error)
+
+	// CreateOrg создаёт организацию и возвращает ключ доступа. Ключ
+	// хранится только в виде хеша и повторно не выдаётся.
+	CreateOrg(ctx context.Context, name, city string) (*Org, string, error)
+	OrgByToken(ctx context.Context, token string) (*Org, error)
+	OrgByFeedToken(ctx context.Context, feedToken string) (*Org, error)
+
+	ListStaff(ctx context.Context, orgID string) ([]passes.Employee, error)
+	// PutStaff добавляет сотрудников или обновляет существующих по коду.
+	PutStaff(ctx context.Context, orgID string, staff []passes.Employee) error
+	GetStaff(ctx context.Context, orgID, code string) (*passes.Employee, error)
+	DeleteStaff(ctx context.Context, orgID, code string) error
+
+	Ping(ctx context.Context) error
+	Close() error
 }
 
-// Save сохраняет план и присваивает ему идентификатор.
-func (m *Memory) Save(p *planner.Plan) (string, error) {
-	buf := make([]byte, 12)
+func randomHex(n int) (string, error) {
+	buf := make([]byte, n)
 	if _, err := rand.Read(buf); err != nil {
 		return "", err
 	}
-	id := hex.EncodeToString(buf)
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	p.ID = id
-	m.plans[id] = p
-	m.order = append(m.order, id)
-	for len(m.order) > m.limit {
-		delete(m.plans, m.order[0])
-		m.order = m.order[1:]
-	}
-	return id, nil
+	return hex.EncodeToString(buf), nil
 }
 
-// Get возвращает план по идентификатору.
-func (m *Memory) Get(id string) (*planner.Plan, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	p, ok := m.plans[id]
-	return p, ok
+// newOrg генерирует идентификатор, ключ доступа и ключ календаря.
+func newOrg(name, city string) (*Org, string, error) {
+	id, err := randomHex(8)
+	if err != nil {
+		return nil, "", err
+	}
+	secret, err := randomHex(24)
+	if err != nil {
+		return nil, "", err
+	}
+	feed, err := randomHex(24)
+	if err != nil {
+		return nil, "", err
+	}
+	return &Org{ID: id, Name: name, City: city, FeedToken: feed, CreatedAt: time.Now().UTC()}, "zk_" + secret, nil
+}
+
+func hashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }

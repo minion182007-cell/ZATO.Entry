@@ -23,7 +23,7 @@ func server(t *testing.T) *httptest.Server {
 		t.Fatal(err)
 	}
 	s := &api.Server{
-		Profiles: reg, Plans: store.NewMemory(10), Static: web.Files(),
+		Profiles: reg, Store: store.NewMemory(), Static: web.Files(),
 		Now: func() time.Time { return time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC) },
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
@@ -32,37 +32,51 @@ func server(t *testing.T) *httptest.Server {
 	return ts
 }
 
-func post(t *testing.T, url, body string) (*http.Response, map[string]any) {
+// call выполняет запрос и разбирает JSON-ответ (объект или массив).
+func call(t *testing.T, method, url, token, body string) (int, any, string) {
 	t.Helper()
-	res, err := http.Post(url, "application/json", strings.NewReader(body))
+	req, _ := http.NewRequest(method, url, strings.NewReader(body))
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer res.Body.Close()
-	var out map[string]any
+	raw, _ := io.ReadAll(res.Body)
+	var out any
 	if strings.HasPrefix(res.Header.Get("Content-Type"), "application/json") {
-		if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
-			t.Fatal(err)
+		if err := json.Unmarshal(raw, &out); err != nil {
+			t.Fatalf("%s %s: %v: %s", method, url, err, raw)
 		}
 	}
-	return res, out
+	return res.StatusCode, out, string(raw)
 }
 
-func TestPlanRoundTrip(t *testing.T) {
+func obj(v any) map[string]any { m, _ := v.(map[string]any); return m }
+
+func TestPlanIsSavedOnlyOnRequest(t *testing.T) {
 	ts := server(t)
-	res, plan := post(t, ts.URL+"/api/v1/plans", `{"city":"sarov","scenario":"business"}`)
-	if res.StatusCode != http.StatusCreated {
-		t.Fatalf("status %d: %v", res.StatusCode, plan)
+	status, out, _ := call(t, "POST", ts.URL+"/api/v1/plans", "", `{"scenario":"business"}`)
+	if status != http.StatusOK || obj(out)["id"] != nil || obj(out)["target_date"] == "" {
+		t.Fatalf("расчёт без сохранения: %d %v", status, out)
 	}
-	id, _ := plan["id"].(string)
-	if id == "" || plan["target_date"] == "" {
-		t.Fatalf("план без id или даты: %v", plan)
+	status, out, _ = call(t, "POST", ts.URL+"/api/v1/plans", "", `{"scenario":"business","save":true}`)
+	id, _ := obj(out)["id"].(string)
+	if status != http.StatusCreated || id == "" {
+		t.Fatalf("сохранение: %d %v", status, out)
 	}
-	got, err := http.Get(ts.URL + "/api/v1/plans/" + id)
-	if err != nil || got.StatusCode != http.StatusOK {
-		t.Fatalf("GET план: %v %v", got.StatusCode, err)
+	status, out, _ = call(t, "GET", ts.URL+"/api/v1/plans/"+id, "", "")
+	if status != http.StatusOK || obj(out)["scenario"] != "business" {
+		t.Fatalf("чтение плана: %d %v", status, out)
 	}
-	got.Body.Close()
+	if status, _, _ := call(t, "GET", ts.URL+"/api/v1/plans/nope", "", ""); status != http.StatusNotFound {
+		t.Errorf("нет плана: %d", status)
+	}
 }
 
 func TestBadRequests(t *testing.T) {
@@ -74,31 +88,121 @@ func TestBadRequests(t *testing.T) {
 		{"/api/v1/plans", `{"city":"moscow","scenario":"work"}`},
 		{"/api/v1/passes/validate", `{"pass_type":"vip","persons":[]}`},
 		{"/api/v1/renewals/calendar", `{"staff":[{"id":"1","pass_expires":"завтра"}]}`},
+		{"/api/v1/orgs", `{"name":"  "}`},
+		{"/api/v1/orgs", `{"name":"А","city":"moscow"}`},
 	}
 	for _, c := range cases {
-		res, out := post(t, ts.URL+c.path, c.body)
-		if res.StatusCode != http.StatusBadRequest || out["error"] == nil {
-			t.Errorf("%s %s: status %d %v", c.path, c.body, res.StatusCode, out)
+		status, out, _ := call(t, "POST", ts.URL+c.path, "", c.body)
+		if status != http.StatusBadRequest || obj(out)["error"] == nil {
+			t.Errorf("%s %s: status %d %v", c.path, c.body, status, out)
 		}
 	}
 }
 
-func TestRenewalsICSAndStatic(t *testing.T) {
+func TestOrgCabinet(t *testing.T) {
 	ts := server(t)
-	res, err := http.Post(ts.URL+"/api/v1/renewals/calendar?format=ics", "application/json",
-		strings.NewReader(`{"staff":[{"id":"E-1","pass_expires":"2027-06-01"}]}`))
-	if err != nil {
-		t.Fatal(err)
+	base := ts.URL + "/api/v1"
+
+	status, out, _ := call(t, "POST", base+"/orgs", "", `{"name":"ООО «Пример»"}`)
+	token, _ := obj(out)["token"].(string)
+	feed, _ := obj(obj(out)["org"])["feed_token"].(string)
+	if status != http.StatusCreated || !strings.HasPrefix(token, "zk_") || feed == "" {
+		t.Fatalf("создание кабинета: %d %v", status, out)
 	}
-	body, _ := io.ReadAll(res.Body)
-	res.Body.Close()
-	if !strings.Contains(string(body), "DTSTART;VALUE=DATE:20270417") {
-		t.Errorf("ics: %s", body)
+	_, out2, _ := call(t, "POST", base+"/orgs", "", `{"name":"Чужая"}`)
+	foreign, _ := obj(out2)["token"].(string)
+
+	// Без ключа и с неверным ключом кабинет закрыт.
+	for _, tok := range []string{"", "zk_wrong", feed} {
+		for _, path := range []string{"/orgs/me", "/orgs/me/staff", "/orgs/me/plans", "/orgs/me/renewals"} {
+			if status, _, _ := call(t, "GET", base+path, tok, ""); status != http.StatusUnauthorized {
+				t.Errorf("GET %s с ключом %q: %d", path, tok, status)
+			}
+		}
+	}
+
+	// Штат: добавление, проверка данных, календарь.
+	bad := []string{
+		`[]`,
+		`[{"id":"","pass_expires":"2027-01-01"}]`,
+		`[{"id":"a/b","pass_expires":"2027-01-01"}]`,
+		`[{"id":"E-1","pass_expires":"01.01.2027"}]`,
+	}
+	for _, body := range bad {
+		if status, _, raw := call(t, "POST", base+"/orgs/me/staff", token, body); status != http.StatusBadRequest {
+			t.Errorf("штат %s: %d %s", body, status, raw)
+		}
+	}
+	status, out, _ = call(t, "POST", base+"/orgs/me/staff", token,
+		`[{"id":"С-001","name":"Монтажник","pass_expires":"2027-01-05"},{"id":"С-002","pass_expires":"2027-06-01"}]`)
+	if status != http.StatusOK || len(obj(out)["items"].([]any)) != 2 {
+		t.Fatalf("добавление штата: %d %v", status, out)
+	}
+	first := obj(obj(out)["items"].([]any)[0])
+	if first["id"] != "С-001" || first["submit_by"] != "2026-11-21" || first["status"] != "due" {
+		t.Errorf("календарь: %v", first)
+	}
+
+	// Чужая организация не видит и не меняет штат.
+	_, out, _ = call(t, "GET", base+"/orgs/me/staff", foreign, "")
+	if list, _ := out.([]any); len(list) != 0 {
+		t.Errorf("чужой штат виден: %v", out)
+	}
+	if status, _, _ := call(t, "DELETE", base+"/orgs/me/staff/С-001", foreign, ""); status != http.StatusNotFound {
+		t.Errorf("удаление чужого сотрудника: %d", status)
+	}
+
+	// Продление: прежний срок + 365 дней.
+	status, _, _ = call(t, "POST", base+"/orgs/me/staff/С-001/renew", token, `{}`)
+	_, out, _ = call(t, "GET", base+"/orgs/me/staff", token, "")
+	if got := obj(out.([]any)[0])["pass_expires"]; status != http.StatusOK || got != "2028-01-05" {
+		t.Errorf("продление: %d, срок %v", status, got)
+	}
+	status, _, _ = call(t, "POST", base+"/orgs/me/staff/С-001/renew", token, `{"pass_expires":"2028-03-01"}`)
+	_, out, _ = call(t, "GET", base+"/orgs/me/staff", token, "")
+	if got := obj(out.([]any)[0])["pass_expires"]; status != http.StatusOK || got != "2028-03-01" {
+		t.Errorf("продление с датой: %d, срок %v", status, got)
+	}
+
+	// Подписка на календарь по ключу только для чтения.
+	status, _, ics := call(t, "GET", base+"/feeds/"+feed+"/renewals.ics", "", "")
+	if status != http.StatusOK || strings.Count(ics, "BEGIN:VEVENT") != 2 {
+		t.Errorf("календарь по подписке: %d\n%s", status, ics)
+	}
+	if status, _, _ := call(t, "GET", base+"/feeds/"+token+"/renewals.ics", "", ""); status != http.StatusNotFound {
+		t.Errorf("ключ доступа принят как ключ календаря: %d", status)
+	}
+
+	if status, _, _ := call(t, "DELETE", base+"/orgs/me/staff/С-002", token, ""); status != http.StatusOK {
+		t.Errorf("удаление: %d", status)
+	}
+
+	// Сохранённый с ключом план попадает в кабинет.
+	call(t, "POST", base+"/plans", token, `{"scenario":"work","save":true}`)
+	call(t, "POST", base+"/plans", "", `{"scenario":"visit","save":true}`)
+	_, out, _ = call(t, "GET", base+"/orgs/me/plans", token, "")
+	if list, _ := out.([]any); len(list) != 1 || obj(list[0])["scenario"] != "work" {
+		t.Errorf("планы кабинета: %v", out)
+	}
+	if status, _, _ := call(t, "POST", base+"/plans", "zk_wrong", `{"scenario":"work","save":true}`); status != http.StatusUnauthorized {
+		t.Errorf("сохранение с неверным ключом: %d", status)
+	}
+}
+
+func TestStaticHeadersAndICS(t *testing.T) {
+	ts := server(t)
+	_, _, ics := call(t, "POST", ts.URL+"/api/v1/renewals/calendar?format=ics", "",
+		`{"staff":[{"id":"E-1","pass_expires":"2027-06-01"}]}`)
+	if !strings.Contains(ics, "DTSTART;VALUE=DATE:20270417") {
+		t.Errorf("ics: %s", ics)
 	}
 	for _, path := range []string{"/", "/app.js", "/style.css", "/healthz", "/api/v1/profiles", "/api/v1/profiles/sarov"} {
 		r, err := http.Get(ts.URL + path)
 		if err != nil || r.StatusCode != http.StatusOK {
-			t.Errorf("GET %s: %v", path, r.StatusCode)
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		if r.Header.Get("Content-Security-Policy") == "" || r.Header.Get("X-Content-Type-Options") != "nosniff" {
+			t.Errorf("GET %s: нет защитных заголовков", path)
 		}
 		r.Body.Close()
 	}
