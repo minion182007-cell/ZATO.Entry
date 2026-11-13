@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ЗАТО.Вход — единое окно въезда</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">ЗАТО.Вход <span id="city"></span></div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="plan" aria-selected="true">Дорожная карта</button>
+    <button role="tab" data-tab="check" aria-selected="false">Предпроверка пакета</button>
+    <button role="tab" data-tab="renew" aria-selected="false">Продления</button>
+  </nav>
+</header>
+
+<main>
+  <section id="tab-plan">
+    <div class="layout">
+      <form id="plan-form" class="panel">
+        <div class="seg" id="scenarios" role="radiogroup" aria-label="Основание въезда"></div>
+        <p class="muted" id="scenario-desc"></p>
+        <label class="field">Дата старта
+          <input type="date" id="start-date">
+        </label>
+        <fieldset id="questions"><legend>Анкета</legend></fieldset>
+        <fieldset id="sliders"><legend>Сроки задаёт эксперт</legend></fieldset>
+        <label class="check"><input type="checkbox" id="show-assumptions"> Подсветить допущения</label>
+      </form>
+
+      <div class="result">
+        <div class="hero" id="hero" aria-live="polite"></div>
+        <div class="first" id="first-action"></div>
+        <div class="steps" id="steps"></div>
+        <ul class="limits" id="limits"></ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-check" hidden>
+    <div class="layout">
+      <form id="check-form" class="panel">
+        <label class="field">Вид пропуска <select id="pass-type"></select></label>
+        <label class="field">Желаемая дата въезда <input type="date" id="entry-date"></label>
+        <label class="field">Пакет (JSON, список людей)
+          <textarea id="persons" rows="18" spellcheck="false"></textarea>
+        </label>
+        <p class="muted">Пример заполнен сгенерированными данными. Пакет проверяется и не сохраняется.</p>
+        <button type="submit">Проверить пакет</button>
+      </form>
+      <div class="result" id="check-result" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section id="tab-renew" hidden>
+    <div class="layout">
+      <form id="renew-form" class="panel">
+        <p class="muted">Сотрудник и дата окончания пропуска — по строке: <code>код; ГГГГ-ММ-ДД</code></p>
+        <textarea id="staff" rows="12" spellcheck="false"></textarea>
+        <div class="row">
+          <button type="submit">Построить календарь</button>
+          <button type="button" id="ics" class="ghost">Скачать .ics</button>
+        </div>
+      </form>
+      <div class="result" id="renew-result" aria-live="polite"></div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot" id="disclaimer"></footer>
+<script src="app.js"></script>
+</body>
+</html>

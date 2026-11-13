@@ -1,0 +1,146 @@
+{
+  "id": "sarov",
+  "name": "ЗАТО Саров",
+  "region": "Нижегородская область",
+  "disclaimer": "Пилотный профиль. Сроки и состав шагов — оценочные допущения, а не официальные данные органов власти. Не является официальным сервисом администрации ЗАТО Саров, АО «Атом-ТОР» или Госкорпорации «Росатом».",
+  "limits": [
+    "Не сокращаем срок спецпроверки — делаем дату известной.",
+    "Не обещаем результат рассмотрения заявки.",
+    "Не заменяем МФЦ и бюро пропусков.",
+    "Не гарантируем совпадение регламентов в разных ЗАТО."
+  ],
+  "holidays": [
+    "2026-01-01", "2026-01-02", "2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08",
+    "2026-02-23", "2026-05-01", "2026-06-12", "2026-11-04",
+    "2027-01-01", "2027-01-04", "2027-01-05", "2027-01-06", "2027-01-07", "2027-01-08",
+    "2027-02-23", "2027-03-08", "2027-06-14", "2027-11-04"
+  ],
+  "authorities": [
+    { "id": "security", "title": "Служба безопасности", "role": "decision", "assumption": true },
+    { "id": "pass_bureau", "title": "Бюро пропусков", "role": "decision", "reports_to": "security", "assumption": true },
+    { "id": "administration", "title": "Администрация ЗАТО", "role": "decision" },
+    { "id": "mfc", "title": "МФЦ", "role": "service" },
+    { "id": "business_center", "title": "Центр поддержки предпринимательства", "role": "service" },
+    { "id": "incubator", "title": "Бизнес-инкубатор", "role": "service" },
+    { "id": "host", "title": "Принимающая организация", "role": "service" },
+    { "id": "showcase", "title": "Витрины города (виджет и API)", "role": "channel" }
+  ],
+  "scenarios": [
+    {
+      "id": "visit",
+      "title": "Визит",
+      "description": "Разовый въезд: гость, врач, преподаватель, спортивная команда, турист, паломник, осмотр помещения.",
+      "pass_type": "guest",
+      "first_action": "v_request",
+      "goal": "v_entry",
+      "questions": [
+        { "id": "has_host", "label": "Есть принимающая сторона в городе (организация или житель)", "type": "bool", "default": true },
+        { "id": "group_size", "label": "Сколько человек въезжает", "type": "int", "default": 1 }
+      ],
+      "steps": [
+        { "id": "v_host", "title": "Найти принимающую сторону", "description": "Заявку на въезд подаёт организация или житель города. Через центр поддержки предпринимательства можно получить принимающую сторону для осмотра помещений.", "owner": "business_center", "days": 5, "calendar": "working", "when": { "has_host": false }, "assumption": true },
+        { "id": "v_package", "title": "Собрать данные въезжающих", "owner": "applicant", "days": 2, "calendar": "working", "depends_on": ["v_host"] },
+        { "id": "v_precheck", "title": "Предпроверка пакета сервисом", "description": "Автоматическая проверка комплектности и форматов до подачи.", "owner": "applicant", "days": 1, "calendar": "working", "depends_on": ["v_package"] },
+        { "id": "v_request", "title": "Подать заявку на гостевой пропуск", "owner": "host", "days": 1, "calendar": "working", "depends_on": ["v_precheck"] },
+        { "id": "v_check", "title": "Рассмотрение заявки", "owner": "security", "days": 30, "min_days": 14, "max_days": 45, "calendar": "calendar", "depends_on": ["v_request"], "assumption": true, "adjustable": true, "refusal_point": true, "note": "Срок рассмотрения гостевой заявки — допущение, требует подтверждения регламентом." },
+        { "id": "v_issue", "title": "Оформление пропуска", "owner": "pass_bureau", "days": 1, "calendar": "working", "depends_on": ["v_check"], "assumption": true },
+        { "id": "v_entry", "title": "Въезд в город", "owner": "applicant", "days": 0, "calendar": "calendar", "depends_on": ["v_issue"] }
+      ]
+    },
+    {
+      "id": "work",
+      "title": "Работа",
+      "description": "Иногородний сотрудник или подрядчик местного предприятия: пропуск на срок работ с ежегодным продлением.",
+      "pass_type": "work",
+      "first_action": "w_basis",
+      "goal": "w_start",
+      "questions": [
+        { "id": "staff_count", "label": "Сколько иногородних сотрудников", "type": "int", "default": 5 },
+        { "id": "has_contract", "label": "Договор с местным предприятием уже подписан", "type": "bool", "default": true }
+      ],
+      "steps": [
+        { "id": "w_contract", "title": "Подписать договор с предприятием", "owner": "applicant", "days": 10, "calendar": "working", "when": { "has_contract": false }, "assumption": true },
+        { "id": "w_basis", "title": "Получить письмо-основание от принимающего предприятия", "owner": "host", "days": 5, "calendar": "working", "depends_on": ["w_contract"], "assumption": true },
+        { "id": "w_package", "title": "Собрать анкеты и документы сотрудников", "owner": "applicant", "days": 5, "calendar": "working", "depends_on": ["w_contract"] },
+        { "id": "w_precheck", "title": "Предпроверка пакета сервисом", "description": "Одна неверная форма останавливает объект — проверяем пакет до подачи.", "owner": "applicant", "days": 1, "calendar": "working", "depends_on": ["w_package", "w_basis"] },
+        { "id": "w_submit", "title": "Подать ходатайство на пропуска", "owner": "host", "days": 1, "calendar": "working", "depends_on": ["w_precheck"] },
+        { "id": "w_check", "title": "Спецпроверка", "owner": "security", "days": 75, "min_days": 60, "max_days": 90, "calendar": "calendar", "depends_on": ["w_submit"], "assumption": true, "adjustable": true, "refusal_point": true, "note": "2–3 месяца по оценке; точный срок задаёт эксперт." },
+        { "id": "w_issue", "title": "Оформление пропусков", "owner": "pass_bureau", "days": 3, "calendar": "working", "depends_on": ["w_check"], "assumption": true },
+        { "id": "w_start", "title": "Выход сотрудников на объект", "owner": "applicant", "days": 0, "calendar": "calendar", "depends_on": ["w_issue"] }
+      ]
+    },
+    {
+      "id": "business",
+      "title": "Бизнес",
+      "description": "Открытие малого или среднего бизнеса в городе: от ходатайств в первую неделю до даты открытия.",
+      "pass_type": "work",
+      "first_action": "b_petition",
+      "goal": "b_open",
+      "questions": [
+        { "id": "founder_nonresident", "label": "Основатель — иногородний", "type": "bool", "default": true },
+        { "id": "needs_registration", "label": "Нужно регистрировать юрлицо или ИП", "type": "bool", "default": true },
+        { "id": "needs_fitout", "label": "Помещению нужен ремонт и оборудование", "type": "bool", "default": true },
+        { "id": "nonresident_staff", "label": "Сколько иногородних сотрудников на старте", "type": "int", "default": 2 }
+      ],
+      "steps": [
+        { "id": "b_consult", "title": "Консультация в центре поддержки предпринимательства", "description": "Получаем принимающую сторону для ходатайств.", "owner": "business_center", "days": 2, "calendar": "working", "assumption": true },
+        { "id": "b_package", "title": "Собрать анкеты ключевых людей", "owner": "applicant", "days": 2, "calendar": "working" },
+        { "id": "b_petition", "title": "Подать ходатайства на пропуска — в первую неделю", "description": "Ещё до помещения: это ничего не стоит и превращает «когда-нибудь» в дату на календаре.", "owner": "business_center", "days": 1, "calendar": "working", "depends_on": ["b_consult", "b_package"] },
+        { "id": "b_check", "title": "Спецпроверка", "owner": "security", "days": 75, "min_days": 60, "max_days": 90, "calendar": "calendar", "depends_on": ["b_petition"], "assumption": true, "adjustable": true, "refusal_point": true, "note": "2–3 месяца по оценке; точный срок задаёт эксперт." },
+        { "id": "b_issue", "title": "Оформление пропусков", "owner": "pass_bureau", "days": 3, "calendar": "working", "depends_on": ["b_check"], "assumption": true },
+        { "id": "b_guest_pass", "title": "Гостевой пропуск для осмотра помещений", "description": "Тот же гостевой пропуск, что и в сценарии «Визит».", "owner": "business_center", "days": 30, "min_days": 14, "max_days": 45, "calendar": "calendar", "depends_on": ["b_consult"], "when": { "founder_nonresident": true }, "assumption": true, "adjustable": true },
+        { "id": "b_premises", "title": "Выбрать помещение", "owner": "applicant", "days": 14, "calendar": "calendar", "depends_on": ["b_guest_pass"], "assumption": true },
+        { "id": "b_register", "title": "Зарегистрировать юрлицо или ИП", "owner": "mfc", "days": 5, "calendar": "working", "when": { "needs_registration": true } },
+        { "id": "b_lease", "title": "Заключить договор аренды", "owner": "applicant", "days": 10, "calendar": "working", "depends_on": ["b_premises", "b_register"], "assumption": true },
+        { "id": "b_fitout", "title": "Ремонт и оборудование", "owner": "applicant", "days": 30, "min_days": 21, "max_days": 60, "calendar": "calendar", "depends_on": ["b_lease"], "when": { "needs_fitout": true }, "assumption": true, "adjustable": true },
+        { "id": "b_hire", "title": "Нанять персонал", "owner": "applicant", "days": 30, "calendar": "calendar", "depends_on": ["b_register"], "assumption": true },
+        { "id": "b_open", "title": "Открытие", "owner": "applicant", "days": 0, "calendar": "calendar", "depends_on": ["b_issue", "b_fitout", "b_hire", "b_lease"] }
+      ]
+    }
+  ],
+  "pass_types": [
+    {
+      "id": "guest",
+      "title": "Гостевой (разовый) пропуск",
+      "required_fields": ["full_name", "birth_date", "citizenship", "passport_series", "passport_number", "passport_issued", "registration_address", "purpose"],
+      "patterns": {
+        "full_name": "^[А-ЯЁ][а-яё-]+( [А-ЯЁ][а-яё-]+){1,3}$",
+        "passport_series": "^\\d{4}$",
+        "passport_number": "^\\d{6}$"
+      },
+      "documents": [
+        { "id": "passport_copy", "title": "Копия паспорта", "required": true },
+        { "id": "application", "title": "Заявка принимающей стороны", "required": true }
+      ],
+      "lead_days": 30,
+      "min_age": 14,
+      "assumption": true
+    },
+    {
+      "id": "work",
+      "title": "Пропуск на срок работ",
+      "required_fields": ["full_name", "birth_date", "citizenship", "passport_series", "passport_number", "passport_issued", "registration_address", "employer", "position", "purpose"],
+      "patterns": {
+        "full_name": "^[А-ЯЁ][а-яё-]+( [А-ЯЁ][а-яё-]+){1,3}$",
+        "passport_series": "^\\d{4}$",
+        "passport_number": "^\\d{6}$"
+      },
+      "documents": [
+        { "id": "passport_copy", "title": "Копия паспорта", "required": true },
+        { "id": "questionnaire", "title": "Анкета", "required": true },
+        { "id": "petition", "title": "Ходатайство принимающей организации", "required": true },
+        { "id": "employment_proof", "title": "Подтверждение трудовых отношений", "required": true },
+        { "id": "photo", "title": "Фотография", "required": false }
+      ],
+      "lead_days": 75,
+      "min_age": 18,
+      "assumption": true
+    }
+  ],
+  "renewal": {
+    "valid_days": 365,
+    "submit_before_days": 45,
+    "warn_days": 14,
+    "assumption": true
+  }
+}
